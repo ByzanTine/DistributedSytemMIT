@@ -65,5 +65,5 @@ func getMajorityMax(array []int) int {
 }
 
 func getElectionTimeout() time.Duration {
-	return time.Duration(rand.Int63n(300)+250) * time.Millisecond
+	return time.Duration(rand.Int63n(300)+550) * time.Millisecond
 }

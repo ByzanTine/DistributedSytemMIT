@@ -738,7 +738,8 @@ func TestFigure8Unreliable2C(t *testing.T) {
 		}
 		leader := -1
 		for i := 0; i < servers; i++ {
-			_, _, ok := cfg.rafts[i].Start(rand.Int() % 10000)
+			// _, _, ok := cfg.rafts[i].Start(rand.Int() % 10000)
+			_, _, ok := cfg.rafts[i].Start(iters*100 + rand.Int()%100)
 			if ok && cfg.connected[i] {
 				leader = i
 			}
@@ -773,7 +774,8 @@ func TestFigure8Unreliable2C(t *testing.T) {
 		}
 	}
 
-	cfg.one(rand.Int()%10000, servers)
+	// cfg.one(rand.Int()%10000, servers)
+	cfg.one(1234, servers)
 	fmt.Printf("  ... Passed2\n")
 
 	fmt.Printf("  ... Passed\n")

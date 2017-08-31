@@ -257,7 +257,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	}
 	// Parse the prev log info. Return false when prev log didn't match.
 	if rf.getLastLogIndex() < args.PrevLogIndex {
-		log.Print("Me: ", rf.me, " index doesn't match args: ", args.PrevLogIndex, " vs rf.li:", rf.getLastLogIndex())
+		// log.Print("Me: ", rf.me, " index doesn't match args: ", args.PrevLogIndex, " vs rf.li:", rf.getLastLogIndex())
 		// No need to go through all the logs for decrements.
 		reply.ConflictTermStartIndex = rf.getLastLogIndex() + 1
 		reply.Success = false
@@ -266,7 +266,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	}
 
 	if args.PrevLogIndex > 0 && (rf.get(args.PrevLogIndex).Term != args.PrevLogTerm) {
-		log.Print("Me: ", rf.me, " term does't match, remove this one and followings")
+		// log.Print("Me: ", rf.me, " term does't match, remove this one and followings")
 		reply.ConflictTerm = rf.log[args.PrevLogIndex-1].Term
 		// This term is all corrupted, find the previous index.
 		reply.ConflictTermStartIndex = getStartIndex(rf.log, reply.ConflictTerm)
@@ -339,7 +339,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	}
 	rf.log = append(rf.log, LogEntry{Cmd: command, Term: term})
 	index = rf.getLastLogIndex()
-	log.Print("Me: ", rf.me, " Write entry to local log: ", rf.end())
+	// log.Print("Me: ", rf.me, " Write entry to local log: ", rf.end())
 
 	return index, term, isLeader
 }
@@ -370,6 +370,10 @@ func (rf *Raft) sendRequestVoteAndReport(index int) {
 	votes := 0
 	if !ok {
 		// log.Print("Me: ", rf.me, " SendRequestVote Failed")
+		return
+	}
+	if reply.Term > args.Term {
+		rf.ResetState(reply.Term)
 		return
 	}
 	if reply.VoteGranted == true {
@@ -441,12 +445,12 @@ func (rf *Raft) processReply(args *AppendEntriesArgs, reply *AppendEntriesReply,
 			// need to find if (only b/c of log inconsistency)
 			prevNextIndex := args.PrevLogIndex + 1
 			if reply.ConflictTermStartIndex == 0 {
-				log.Print("Me: ", rf.me, " can't find the existing entry, decrement nextIndex for ", index)
+				// log.Print("Me: ", rf.me, " can't find the existing entry, decrement nextIndex for ", index)
 				rf.nextIndex[index] = prevNextIndex - 1
 			} else {
 				log.Print("Me: ", rf.me, " change ", index, "'s next index from", prevNextIndex, " to ", reply.ConflictTermStartIndex)
 				assert(prevNextIndex > reply.ConflictTermStartIndex)
-				rf.nextIndex[index] = reply.ConflictTermStartIndex
+				rf.nextIndex[index] = min(rf.nextIndex[index], reply.ConflictTermStartIndex)
 			}
 		}
 	}
