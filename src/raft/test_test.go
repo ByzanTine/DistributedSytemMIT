@@ -766,6 +766,7 @@ func TestFigure8Unreliable2C(t *testing.T) {
 		}
 	}
 
+	fmt.Printf("  ... Passed1\n")
 	for i := 0; i < servers; i++ {
 		if cfg.connected[i] == false {
 			cfg.connect(i)
@@ -773,6 +774,7 @@ func TestFigure8Unreliable2C(t *testing.T) {
 	}
 
 	cfg.one(rand.Int()%10000, servers)
+	fmt.Printf("  ... Passed2\n")
 
 	fmt.Printf("  ... Passed\n")
 }

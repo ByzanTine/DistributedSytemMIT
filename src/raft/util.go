@@ -22,12 +22,25 @@ func min(x, y int) int {
 	return y
 }
 
+// Should go to some util funcs.
+func max(x, y int) int {
+	if x > y {
+		return x
+	}
+	return y
+}
+
+func assert(expr bool) {
+	if !expr {
+		panic("Programming error")
+	}
+}
+
 // Will return a value that majority of elements are greater than.
 // e.g [6, 7, 8] -> 7
 //     [1, 1, 1, 2, 3] -> 1
 // Assume array size > 0
 func getMajorityMax(array []int) int {
-
 	// Find min and increase monotonically, hit and break.
 	min := array[0]
 	for _, ele := range array {
@@ -52,5 +65,5 @@ func getMajorityMax(array []int) int {
 }
 
 func getElectionTimeout() time.Duration {
-	return time.Duration(rand.Int63n(300)+300) * time.Millisecond
+	return time.Duration(rand.Int63n(300)+250) * time.Millisecond
 }
