@@ -55,20 +55,39 @@ type RaftKV struct {
 	clientRequests map[int64]Requests // handler will wait for the Op to come
 }
 
+type Status int
+
+const (
+	SUCCESS Status = 1 + iota
+	WRONG_LEADER
+	DUPILCATE
+)
+
 // Return true if current raft server is the leader.
-func (kv *RaftKV) TryWriteOp(op *Op, reqId int64, clientId int64) (bool, chan Op) {
+func (kv *RaftKV) TryWriteOp(op *Op, reqId int64, clientId int64) (Status, chan Op) {
 	kv.mu.Lock()
 	defer kv.mu.Unlock()
+	var ret_chan chan Op
+	// Check if there already has an entry with reqId and clientId.
+	reqs, ok := kv.clientRequests[clientId]
+	if ok {
+		_, ok := reqs[reqId]
+		if ok {
+			// ignore
+			log.Println("Me: ", kv.me, " client duplicate packet")
+			return DUPILCATE, ret_chan
+		}
+	}
 	// Start is no blocking.
 	_, _, isLeader := kv.rf.Start(*op)
-	var ret_chan chan Op
 	if isLeader {
 		requests := GetOrAdd(&kv.clientRequests, clientId)
 		(*requests)[reqId] = make(chan Op)
 
 		ret_chan = (*requests)[reqId]
+		return SUCCESS, ret_chan
 	}
-	return isLeader, ret_chan
+	return WRONG_LEADER, ret_chan
 }
 
 func (kv *RaftKV) Get(args *GetArgs, reply *GetReply) {
@@ -77,7 +96,7 @@ func (kv *RaftKV) Get(args *GetArgs, reply *GetReply) {
 	// defer kv.mu.Unlock()
 	// log.Println("Me: ", kv.me, " recv Get: ", args)
 
-	isLeader, req_chan :=
+	status, req_chan :=
 		kv.TryWriteOp(
 			&Op{
 				Key:      args.Key,
@@ -86,8 +105,16 @@ func (kv *RaftKV) Get(args *GetArgs, reply *GetReply) {
 				ClientId: args.ClientId},
 			args.ReqId,
 			args.ClientId)
+	if status == DUPILCATE {
+		reply.WrongLeader = false
+		reply.Err = OK
 
-	if !isLeader {
+		kv.mu.Lock()
+		defer kv.mu.Unlock()
+		reply.Value = kv.kv[args.Key]
+		return
+	}
+	if status == WRONG_LEADER {
 		reply.WrongLeader = true
 		return
 	}
@@ -108,7 +135,7 @@ func (kv *RaftKV) Get(args *GetArgs, reply *GetReply) {
 func (kv *RaftKV) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 	// Your code here.
 	// log.Println("Me: ", kv.me, " recv PutAppend: ", args)
-	isLeader, req_chan :=
+	status, req_chan :=
 		kv.TryWriteOp(
 			&Op{
 				Key:      args.Key,
@@ -118,8 +145,12 @@ func (kv *RaftKV) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 				ClientId: args.ClientId},
 			args.ReqId,
 			args.ClientId)
-
-	if !isLeader {
+	if status == DUPILCATE {
+		reply.WrongLeader = false
+		reply.Err = OK
+		return
+	}
+	if status == WRONG_LEADER {
 		reply.WrongLeader = true
 		return
 	}

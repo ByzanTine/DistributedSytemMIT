@@ -60,6 +60,7 @@ func (ck *Clerk) Get(key string) string {
 			if reply.WrongLeader {
 				ck.leaderIndex = -1
 				// log.Println("Wrong leader")
+				continue
 			} else {
 				// record leader
 				ck.leaderIndex = callingIndex
@@ -67,9 +68,11 @@ func (ck *Clerk) Get(key string) string {
 			if reply.Err == OK {
 				// log.Println("Recv Get ok")
 				return reply.Value
+			} else {
+				return ""
 			}
 		} else {
-			log.Println("Network error")
+			// log.Println("Me: ", ck.me, " Get Network error: ", callingIndex)
 		}
 	}
 	return ""
@@ -114,7 +117,7 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 				return
 			}
 		} else {
-			log.Println("Network error")
+			log.Println("Me: ", ck.me, " Put Network error")
 		}
 	}
 }
