@@ -49,17 +49,17 @@ func (ck *Clerk) Get(key string) string {
 	// You will have to modify this function.
 	args := GetArgs{Key: key, ReqId: ck.reqIdCounter, ClientId: ck.me}
 	ck.reqIdCounter++
-	var reply GetReply
 	for {
 		callingIndex := int(nrand()) % len(ck.servers)
 		if ck.leaderIndex != -1 {
 			callingIndex = ck.leaderIndex
 		}
+		var reply GetReply
 		ok := ck.servers[callingIndex].Call("RaftKV.Get", &args, &reply)
 		if ok {
 			if reply.WrongLeader {
 				ck.leaderIndex = -1
-				// log.Println("Wrong leader")
+				// log.Println("Me: ", ck.me, " Get wrong leader: ", callingIndex)
 				continue
 			} else {
 				// record leader
@@ -99,16 +99,19 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 
 	ck.reqIdCounter++
 
-	var reply PutAppendReply
 	for {
 		callingIndex := int(nrand()) % len(ck.servers)
 		if ck.leaderIndex != -1 {
 			callingIndex = ck.leaderIndex
 		}
+		var reply PutAppendReply
+		// client invariant, until one call finished, another won't start.
 		ok := ck.servers[callingIndex].Call("RaftKV.PutAppend", &args, &reply)
 		if ok {
 			if reply.WrongLeader {
 				ck.leaderIndex = -1
+				// log.Println("Me: ", ck.me, " Put wrong leader: ", callingIndex)
+				continue
 			} else {
 				// record leader
 				ck.leaderIndex = callingIndex
@@ -117,7 +120,7 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 				return
 			}
 		} else {
-			log.Println("Me: ", ck.me, " Put Network error")
+			// log.Println("Me: ", ck.me, " Put Network error")
 		}
 	}
 }

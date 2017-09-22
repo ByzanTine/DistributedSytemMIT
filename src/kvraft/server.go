@@ -6,6 +6,7 @@ import (
 	"log"
 	"raft"
 	"sync"
+	"time"
 )
 
 const Debug = 0
@@ -71,11 +72,14 @@ func (kv *RaftKV) TryWriteOp(op *Op, reqId int64, clientId int64) (Status, chan 
 	// Check if there already has an entry with reqId and clientId.
 	reqs, ok := kv.clientRequests[clientId]
 	if ok {
-		_, ok := reqs[reqId]
-		if ok {
+		req, ok := reqs[reqId]
+		if ok && req == nil {
 			// ignore
 			log.Println("Me: ", kv.me, " client duplicate packet")
 			return DUPILCATE, ret_chan
+		} else if ok {
+			log.Println("Me: ", kv.me, " mysterious leader fault, req come back, do it again")
+			// return SUCCESS, ret_chan // Try to wait again.
 		}
 	}
 	// Start is no blocking.
@@ -118,7 +122,28 @@ func (kv *RaftKV) Get(args *GetArgs, reply *GetReply) {
 		reply.WrongLeader = true
 		return
 	}
-	op := <-req_chan
+	var op Op
+	select {
+	case op = <-req_chan:
+		break
+	case <-time.After(1000 * time.Millisecond):
+		// Get timeout can be two scenarios:
+		// 1. it's not a leader anymore.
+		// 2. it's too slow.
+
+		// _, isLeader := kv.rf.GetState()
+		// // if term is different
+		// if isLeader {
+		// 	log.Fatal("Me: ", kv.me, "Being a leader and timeout!!")
+		// }
+		log.Println("Me: ", kv.me, " recv Get: ", args, " timeout")
+		// kv.mu.Lock()
+		// defer kv.mu.Unlock()
+		// requests := GetOrAdd(&kv.clientRequests, args.ClientId)
+		// delete(*requests, args.ReqId)
+		reply.WrongLeader = true
+		return
+	}
 
 	kv.mu.Lock()
 	defer kv.mu.Unlock()
@@ -155,7 +180,20 @@ func (kv *RaftKV) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 		return
 	}
 	// must not hold a lock when waiting.
-	<-req_chan
+	select {
+	case <-req_chan:
+		break
+	case <-time.After(1000 * time.Millisecond):
+		log.Println("Me: ", kv.me, " recv Put: ", args, " timeout")
+		// remove the entry if fail b/c of timeout.
+		// kv.mu.Lock()
+		// defer kv.mu.Unlock()
+		// requests := GetOrAdd(&kv.clientRequests, args.ClientId)
+		// delete(*requests, args.ReqId)
+
+		reply.WrongLeader = true
+		return
+	}
 	reply.Err = OK
 	reply.WrongLeader = false
 }
@@ -177,21 +215,33 @@ func (kv *RaftKV) Apply() {
 		select {
 		case msg := <-kv.applyCh:
 			// if there exists a command.ReqId in the map.
+			// Detect change of term here:
 			op := msg.Command.(Op)
 			kv.mu.Lock()
+			// if there is already a req entry being applied before. Don't apply.
+			requests := GetOrAdd(&kv.clientRequests, op.ClientId)
+			request, ok := (*requests)[op.ReqId]
+			if ok && request == nil {
+				// do no update.
+				log.Println("Me: ", kv.me, " already replied before.")
+				kv.mu.Unlock()
+				continue
+			}
 			if op.Op == "Put" {
 				kv.kv[op.Key] = op.Value
 			}
 			if op.Op == "Append" {
 				kv.kv[op.Key] += op.Value
 			}
-			// do nothing when it's Get.
-			requests := GetOrAdd(&kv.clientRequests, op.ClientId)
-			request, ok := (*requests)[op.ReqId]
 			kv.mu.Unlock()
 			if ok {
+				// log.Println("Me: ", kv.me, " apply with req: ", op)
 				request <- op
 			}
+			kv.mu.Lock()
+			// nil means successfully respond to a client.
+			kv.clientRequests[op.ClientId][op.ReqId] = nil // insert a fake entry
+			kv.mu.Unlock()
 		}
 	}
 }
